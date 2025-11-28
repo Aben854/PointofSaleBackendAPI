@@ -66,12 +66,13 @@ if (fs.existsSync(swaggerPath)) {
 }
 
 // ---------- Static Admin ----------
-const publicDir = path.join(__dirname, "public");
+const publicDir = __dirname;              
 app.use(express.static(publicDir));
 
 app.get("/admin", (_, res) => {
-  res.sendFile(path.join(publicDir, "admin.html"));
+  res.sendFile(path.join(__dirname, "admin.html"));
 });
+
 
 // ---------- Health ----------
 app.get("/", (req, res) =>
