@@ -76,7 +76,7 @@ app.get("/admin", (_, res) => {
 
 // ---------- Health ----------
 app.get("/", (req, res) =>
-  res.json({ ok: true, docs: "/docs", admin: "/admin" })
+  res.json({ Team 7's Backend API is running; ok: true, docs: "/docs", admin: "/admin" })
 );
 
 app.get("/health", (req, res) => res.json({ ok: true }));
