@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Warehouse Payment Settlement – Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- External CSS (no CSP issues) -->
+  <link rel="stylesheet" href="admin.css">
+</head>
+
+<body>
+  <h1>Warehouse Settlement Panel</h1>
+
+  <!-- BASE URL -->
+  <div class="card">
+    <label>Backend API Base URL</label>
+    <input id="baseUrl" value="http://localhost:3000" />
+    <small>This will be changed to your Render URL when deployed.</small>
+  </div>
+
+  <!-- SETTLEMENT -->
+  <div class="card">
+    <h2>Settle Order</h2>
+
+    <label>Order ID</label>
+    <input id="settleOrderId" placeholder="e.g. ORD3001" />
+
+    <label>Final Settlement Amount</label>
+    <input id="settleAmount" type="number" step="0.01" placeholder="e.g. 50.00" />
+
+    <button id="settleButton">Settle Payment</button>
+
+    <div id="settleMsg"></div>
+  </div>
+
+  <!-- ORDER LIST -->
+  <div class="card">
+    <h2>Order List</h2>
+
+    <div class="filter-bar">
+      <select id="filterStatus">
+        <option value="">Filter by Status</option>
+        <option>PENDING</option>
+        <option>AUTHORIZED</option>
+        <option>DECLINED</option>
+        <option>ERROR</option>
+        <option>SETTLED</option>
+      </select>
+
+      <input id="filterCustomerId" type="number" placeholder="Customer ID" />
+      <button id="filterButton">Apply Filters</button>
+    </div>
+
+    <div id="orderTable"></div>
+  </div>
+
+  <!-- External JS (no inline handlers, CSP safe) -->
+  <script src="admin.js"></script>
+</body>
+</html>
