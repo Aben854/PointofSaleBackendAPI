@@ -2,60 +2,69 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Warehouse Payment Settlement – Admin Panel</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Warehouse Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- External CSS (no CSP issues) -->
+  <!-- CSS -->
   <link rel="stylesheet" href="admin.css">
 </head>
 
 <body>
-  <h1>Warehouse Settlement Panel</h1>
+  <canvas id="particle-canvas"></canvas>
 
-  <!-- BASE URL -->
-  <div class="card">
-    <label>Backend API Base URL</label>
-    <input id="baseUrl" value="http://localhost:3000" />
-    <small>This will be changed to your Render URL when deployed.</small>
-  </div>
+  <div class="page-content">
+    <div class="dashboard-container">
 
-  <!-- SETTLEMENT -->
-  <div class="card">
-    <h2>Settle Order</h2>
+      <h1 class="page-title">Warehouse Settlement Panel</h1>
 
-    <label>Order ID</label>
-    <input id="settleOrderId" placeholder="e.g. ORD3001" />
+      <!-- Backend URL (PRE-FILLED WITH RENDER URL) -->
+      <div class="card">
+        <label>Backend API URL</label>
+        <input id="baseUrl" value="https://pointofsalebackendapi.onrender.com" />
+      </div>
 
-    <label>Final Settlement Amount</label>
-    <input id="settleAmount" type="number" step="0.01" placeholder="e.g. 50.00" />
+      <!-- Settlement -->
+      <div class="card">
+        <h2>Settle Order</h2>
 
-    <button id="settleButton">Settle Payment</button>
+        <label>Order ID</label>
+        <input id="settleOrderId" placeholder="e.g. ORD3001">
 
-    <div id="settleMsg"></div>
-  </div>
+        <label>Final Amount</label>
+        <input id="settleAmount" type="number" step="0.01" placeholder="Amount">
 
-  <!-- ORDER LIST -->
-  <div class="card">
-    <h2>Order List</h2>
+        <button id="settleBtn">Settle Payment</button>
 
-    <div class="filter-bar">
-      <select id="filterStatus">
-        <option value="">Filter by Status</option>
-        <option>PENDING</option>
-        <option>AUTHORIZED</option>
-        <option>DECLINED</option>
-        <option>ERROR</option>
-        <option>SETTLED</option>
-      </select>
+        <div id="settleMsg"></div>
+      </div>
 
-      <input id="filterCustomerId" type="number" placeholder="Customer ID" />
-      <button id="filterButton">Apply Filters</button>
+      <!-- Order List -->
+      <div class="card">
+        <h2>Order List</h2>
+
+        <div class="filter-row">
+          <select id="filterStatus">
+            <option value="">Filter Status</option>
+            <option>PENDING</option>
+            <option>AUTHORIZED</option>
+            <option>DECLINED</option>
+            <option>ERROR</option>
+            <option>SETTLED</option>
+          </select>
+
+          <input id="filterCustomerId" type="number" placeholder="Customer ID">
+
+          <button id="filterBtn">Apply Filters</button>
+        </div>
+
+        <div id="orderTable"></div>
+      </div>
+
     </div>
-
-    <div id="orderTable"></div>
   </div>
 
-  <!-- External JS (no inline handlers, CSP safe) -->
+  <!-- EXTERNAL JS -->
+  <script src="particles.min.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>

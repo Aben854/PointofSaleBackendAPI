@@ -1,9 +1,9 @@
-// ---------- Helper ----------
+// BASE URL pulled from input
 function backendUrl() {
   return document.getElementById("baseUrl").value.replace(/\/+$/, "");
 }
 
-// ---------- Settlement ----------
+// ---------------------- SETTLEMENT ----------------------
 async function submitSettlement() {
   const orderId = document.getElementById("settleOrderId").value.trim();
   const amount = Number(document.getElementById("settleAmount").value);
@@ -12,7 +12,7 @@ async function submitSettlement() {
   msgBox.innerHTML = "";
 
   if (!orderId || !amount) {
-    msgBox.innerHTML = `<div class="error">Please enter Order ID and Amount.</div>`;
+    msgBox.innerHTML = `<div class="error">Missing Order ID or Amount.</div>`;
     return;
   }
 
@@ -26,42 +26,43 @@ async function submitSettlement() {
     const data = await res.json();
 
     if (!res.ok) {
-      msgBox.innerHTML = `<div class="error">${data.error || "Settlement failed."}</div>`;
+      msgBox.innerHTML = `<div class="error">${data.error}</div>`;
     } else {
       msgBox.innerHTML = `<div class="success">Order ${orderId} settled successfully!</div>`;
+      loadOrders(); // refresh list
     }
+
   } catch (err) {
     msgBox.innerHTML = `<div class="error">Error: ${err.message}</div>`;
   }
 }
 
-// ---------- Load Orders ----------
+// ---------------------- LOAD ORDERS ----------------------
 async function loadOrders() {
   const status = document.getElementById("filterStatus").value;
   const customerId = document.getElementById("filterCustomerId").value;
 
-  let query = new URLSearchParams();
-  if (status) query.append("status", status);
-  if (customerId) query.append("customerId", customerId);
+  let params = new URLSearchParams();
+  if (status) params.append("status", status);
+  if (customerId) params.append("customerId", customerId);
 
-  const url =
-    backendUrl() + "/orders" + (query.toString() ? "?" + query.toString() : "");
+  const endpoint =
+    backendUrl() + "/orders" + (params.toString() ? "?" + params.toString() : "");
 
   try {
-    const res = await fetch(url);
-    const data = await res.json();
-    renderOrderTable(data);
-  } catch {
+    const res = await fetch(endpoint);
+    const rows = await res.json();
+    renderOrderTable(rows);
+  } catch (err) {
     document.getElementById("orderTable").innerHTML =
-      "<p class='error'>Unable to load orders.</p>";
+      `<p class="error">Unable to load orders. Check backend URL.</p>`;
   }
 }
 
-// ---------- Render Table ----------
+// ---------------------- TABLE RENDER ----------------------
 function renderOrderTable(rows) {
-  if (!rows.length) {
-    document.getElementById("orderTable").innerHTML =
-      "<p>No orders found.</p>";
+  if (!Array.isArray(rows) || rows.length === 0) {
+    document.getElementById("orderTable").innerHTML = "<p>No orders found.</p>";
     return;
   }
 
@@ -69,32 +70,32 @@ function renderOrderTable(rows) {
     <table>
       <tr>
         <th>Order ID</th>
-        <th>Customer ID</th>
+        <th>Customer</th>
         <th>Amount</th>
         <th>Status</th>
         <th>Date</th>
       </tr>
   `;
 
-  rows.forEach((o) => {
+  rows.forEach((row) => {
     html += `
       <tr>
-        <td>${o.order_id}</td>
-        <td>${o.customer_id}</td>
-        <td>$${o.order_amount}</td>
-        <td>${o.status_id}</td>
-        <td>${o.order_date}</td>
+        <td>${row.order_id}</td>
+        <td>${row.customer_id}</td>
+        <td>$${row.order_amount}</td>
+        <td>${row.status_id}</td>
+        <td>${row.order_date}</td>
       </tr>
     `;
   });
 
-  html += `</table>`;
+  html += "</table>";
   document.getElementById("orderTable").innerHTML = html;
 }
 
-// ---------- EVENT LISTENERS (fixed IDs) ----------
-document.getElementById("settleButton").addEventListener("click", submitSettlement);
-document.getElementById("filterButton").addEventListener("click", loadOrders);
+// ---------------------- EVENT LISTENERS ----------------------
+document.getElementById("filterBtn").addEventListener("click", loadOrders);
+document.getElementById("settleBtn").addEventListener("click", submitSettlement);
 
-// Auto-load orders on page load
+// Load on startup
 window.addEventListener("DOMContentLoaded", loadOrders);
