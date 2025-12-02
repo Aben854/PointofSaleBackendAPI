@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Warehouse Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="admin.css">
+</head>
+
+<body>
+  <canvas id="particle-canvas"></canvas>
+
+  <div class="page-content">
+    <div class="dashboard-container">
+
+      <h1 class="page-title">Warehouse Settlement Panel</h1>
+
+      <!-- Backend URL (PRE-FILLED WITH RENDER URL) -->
+      <div class="card">
+        <label>Backend API URL</label>
+        <input id="baseUrl" value="https://pointofsalebackendapi.onrender.com" />
+      </div>
+
+      <!-- Settlement -->
+      <div class="card">
+        <h2>Settle Order</h2>
+
+        <label>Order ID</label>
+        <input id="settleOrderId" placeholder="e.g. ORD3001">
+
+        <label>Final Amount</label>
+        <input id="settleAmount" type="number" step="0.01" placeholder="Amount">
+
+        <button id="settleBtn">Settle Payment</button>
+
+        <div id="settleMsg"></div>
+      </div>
+
+      <!-- Order List -->
+      <div class="card">
+        <h2>Order List</h2>
+
+        <div class="filter-row">
+          <select id="filterStatus">
+            <option value="">Filter Status</option>
+            <option>PENDING</option>
+            <option>AUTHORIZED</option>
+            <option>DECLINED</option>
+            <option>ERROR</option>
+            <option>SETTLED</option>
+          </select>
+
+          <input id="filterCustomerId" type="number" placeholder="Customer ID">
+
+          <button id="filterBtn">Apply Filters</button>
+        </div>
+
+        <div id="orderTable"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- EXTERNAL JS -->
+  <script src="particles.min.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
