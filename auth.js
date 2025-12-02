@@ -2,48 +2,57 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
+const sgMail = require("@sendgrid/mail");
 
 function createAuthRouter(db) {
   const router = express.Router();
 
   const {
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_USER,
-    SMTP_PASS,
+    SENDGRID_API_KEY,
+    FROM_EMAIL,
     APP_BASE_URL = "https://storefrontsolutions.shop"
   } = process.env;
 
-  // Transport for verification emails
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT || 587),
-    secure: false,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    }
-  });
+  // Init SendGrid
+  if (SENDGRID_API_KEY) {
+    sgMail.setApiKey(SENDGRID_API_KEY);
+    console.log("📧 SendGrid API key configured in auth.js");
+  } else {
+    console.warn(
+      "⚠️ SENDGRID_API_KEY not set; auth.js will not be able to send verification emails."
+    );
+  }
 
   async function sendVerificationEmail(toEmail, token) {
+    if (!SENDGRID_API_KEY) {
+      console.warn(
+        "⚠️ sendVerificationEmail called but SENDGRID_API_KEY is not configured."
+      );
+      return;
+    }
+
     const verifyUrl = `${APP_BASE_URL}/auth/verify-email?token=${encodeURIComponent(
       token
     )}`;
 
-    const htmlBody = `
-      <p>Thanks for signing up with Storefront Solutions!</p>
-      <p>Click the link below to verify your email address:</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p>If you did not request this, you can ignore this email.</p>
-    `;
+    const fromEmail = FROM_EMAIL || "no-reply@storefrontsolutions.shop";
 
-    await transporter.sendMail({
-      from: `"Storefront Solutions" <${SMTP_USER}>`,
+    const msg = {
       to: toEmail,
+      from: {
+        email: fromEmail,
+        name: "Storefront Solutions"
+      },
       subject: "Verify your email address",
-      html: htmlBody
-    });
+      html: `
+        <p>Thanks for signing up with Storefront Solutions!</p>
+        <p>Click the link below to verify your email address:</p>
+        <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+        <p>If you did not request this, you can ignore this email.</p>
+      `
+    };
+
+    await sgMail.send(msg);
   }
 
   // ==================================
@@ -160,6 +169,12 @@ function createAuthRouter(db) {
                   "Email send error in /auth/register (continuing):",
                   mailErr
                 );
+                if (mailErr.response && mailErr.response.body) {
+                  console.error(
+                    "SendGrid response body in /auth/register:",
+                    mailErr.response.body
+                  );
+                }
                 // Still succeed account creation for project
                 res.status(201).json({
                   ok: true,
