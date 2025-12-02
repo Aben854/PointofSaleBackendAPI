@@ -1,6 +1,6 @@
 // ===============================
 // CAPSTONE BACKEND – UNIFIED SERVER.JS
-// Render-ready + Auth Register + Email Verification
+// Render-ready + Auth Register + Email Verification (SendGrid Web API)
 // ===============================
 
 const express = require("express");
@@ -14,16 +14,25 @@ const YAML = require("yamljs");
 const swaggerUi = require("swagger-ui-express");
 require("dotenv").config({ quiet: true });
 
+const sgMail = require("@sendgrid/mail");
+
 // Auth + email helpers
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const nodemailer = require("nodemailer");
 
 // Env + Logging
 const IS_TEST = process.env.NODE_ENV === "test";
 const log = (...args) => {
   if (!IS_TEST) console.log(...args);
 };
+
+// ---------------- SendGrid Init ----------------
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  log("📧 SendGrid API key configured.");
+} else {
+  log("⚠️ SENDGRID_API_KEY not set; verification emails will not send.");
+}
 
 const app = express();
 app.set("trust proxy", 1);
@@ -103,17 +112,12 @@ app.get("/db-health", (req, res) => {
 //          AUTH: Register + Email Verification
 // =====================================================
 
-// Helper: send verification email to new users
+// Helper: send verification email to new users (SendGrid Web API)
 async function sendVerificationEmail(toEmail, token) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
+  if (!process.env.SENDGRID_API_KEY) {
+    log("⚠️ sendVerificationEmail called but SENDGRID_API_KEY is not configured.");
+    return;
+  }
 
   const baseUrl =
     process.env.APP_BASE_URL || "https://storefrontsolutions.shop";
@@ -121,9 +125,15 @@ async function sendVerificationEmail(toEmail, token) {
     token
   )}`;
 
-  await transporter.sendMail({
-    from: `"Storefront Solutions" <${process.env.SMTP_USER}>`,
+  const fromEmail =
+    process.env.FROM_EMAIL || "no-reply@storefrontsolutions.shop";
+
+  const msg = {
     to: toEmail,
+    from: {
+      email: fromEmail,
+      name: "Storefront Solutions"
+    },
     subject: "Verify your email",
     html: `
       <p>Thanks for creating an account with Storefront Solutions!</p>
@@ -131,7 +141,9 @@ async function sendVerificationEmail(toEmail, token) {
       <p><a href="${verifyUrl}">${verifyUrl}</a></p>
       <p>If you didn't create this account, you can ignore this email.</p>
     `
-  });
+  };
+
+  await sgMail.send(msg);
 }
 
 // POST /auth/register
@@ -149,7 +161,14 @@ app.post("/auth/register", (req, res) => {
   } = req.body || {};
 
   // Basic validation
-  if (!email || !username || !password || !full_name || !address_line1 || !zip_code) {
+  if (
+    !email ||
+    !username ||
+    !password ||
+    !full_name ||
+    !address_line1 ||
+    !zip_code
+  ) {
     return res.status(400).json({
       error:
         "Missing required fields (email, username, password, full_name, address_line1, zip_code)"
@@ -235,15 +254,20 @@ app.post("/auth/register", (req, res) => {
               });
             })
             .catch((mailErr) => {
-              console.error("Email send error in /auth/register:", mailErr);
-              res.status(201).json({
-                ok: true,
-                customerId,
-                email,
-                warning:
-                  "Account created, but verification email could not be sent."
-              });
-            });
+    console.error("Email send error in /auth/register:", mailErr);
+
+    if (mailErr.response && mailErr.response.body) {
+      console.error("SendGrid response body:", mailErr.response.body);
+    }
+
+    res.status(201).json({
+      ok: true,
+      customerId,
+      email,
+      warning:
+        "Account created, but verification email could not be sent."
+             });
+          });
         }
       );
     }
@@ -504,4 +528,4 @@ if (!IS_TEST) {
   app.listen(PORT, () => log(`✅ API running on port ${PORT}`));
 }
 
-module.exports = app
+module.exports = app;
