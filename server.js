@@ -3,6 +3,8 @@
 // Render-ready + Auth Register + Email Verification (SendGrid Web API)
 // ===============================
 
+require("dotenv").config({ quiet: true });
+
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -12,8 +14,6 @@ const fs = require("fs");
 const path = require("path");
 const YAML = require("yamljs");
 const swaggerUi = require("swagger-ui-express");
-require("dotenv").config({ quiet: true });
-
 const sgMail = require("@sendgrid/mail");
 
 // Auth + email helpers
@@ -254,20 +254,68 @@ app.post("/auth/register", (req, res) => {
               });
             })
             .catch((mailErr) => {
-    console.error("Email send error in /auth/register:", mailErr);
+              console.error("Email send error in /auth/register:", mailErr);
 
-    if (mailErr.response && mailErr.response.body) {
-      console.error("SendGrid response body:", mailErr.response.body);
+              if (mailErr.response && mailErr.response.body) {
+                console.error(
+                  "SendGrid response body:",
+                  mailErr.response.body
+                );
+              }
+
+              res.status(201).json({
+                ok: true,
+                customerId,
+                email,
+                warning:
+                  "Account created, but verification email could not be sent."
+              });
+            });
+        }
+      );
     }
+  );
+});
 
-    res.status(201).json({
-      ok: true,
-      customerId,
-      email,
-      warning:
-        "Account created, but verification email could not be sent."
-             });
-          });
+// GET /verify-email – link clicked from email
+app.get("/verify-email", (req, res) => {
+  const token = req.query.token;
+
+  if (!token) {
+    return res.status(400).send("Missing verification token.");
+  }
+
+  db.get(
+    "SELECT customer_id, is_verified FROM customers WHERE verify_token = ?",
+    [token],
+    (err, customer) => {
+      if (err) {
+        console.error("DB read error in /verify-email:", err);
+        return res.status(500).send("Database read error.");
+      }
+
+      if (!customer) {
+        return res.status(400).send("Invalid or expired verification token.");
+      }
+
+      if (customer.is_verified) {
+        const baseUrl =
+          process.env.APP_BASE_URL || "https://storefrontsolutions.shop";
+        return res.redirect(`${baseUrl}/email-already-verified.html`);
+      }
+
+      db.run(
+        "UPDATE customers SET is_verified = 1, verify_token = NULL WHERE customer_id = ?",
+        [customer.customer_id],
+        (updateErr) => {
+          if (updateErr) {
+            console.error("DB write error in /verify-email:", updateErr);
+            return res.status(500).send("Database write error.");
+          }
+
+          const baseUrl =
+            process.env.APP_BASE_URL || "https://storefrontsolutions.shop";
+          return res.redirect(`${baseUrl}/email-verified.html`);
         }
       );
     }
