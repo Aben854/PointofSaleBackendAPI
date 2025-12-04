@@ -11,6 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const YAML = require("yamljs");
 const swaggerUi = require("swagger-ui-express");
+const crypto = require("crypto");
 require("dotenv").config({ quiet: true });
 
 // Env + Logging
@@ -66,14 +67,16 @@ if (fs.existsSync(swaggerPath)) {
 }
 
 // Static Admin UI
-const publicDir = __dirname;;
+const publicDir = __dirname;
 app.use(express.static(publicDir));
 app.get("/admin", (req, res) =>
   res.sendFile(path.join(publicDir, "admin.html"))
 );
 
 // Health
-app.get("/", (req, res) => res.json({ ok: true, admin: "/admin", docs: "/docs" }));
+app.get("/", (req, res) =>
+  res.json({ ok: true, admin: "/admin", docs: "/docs" })
+);
 app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.get("/db-health", (req, res) => {
@@ -98,8 +101,8 @@ function pickAuthOutcomeWeighted() {
 
 // List Orders (no dependency on order_date)
 app.get("/orders", (req, res) => {
-  const limit = parseInt(req.query.limit) || 200;
-  const offset = parseInt(req.query.offset) || 0;
+  const limit = parseInt(req.query.limit, 10) || 200;
+  const offset = parseInt(req.query.offset, 10) || 0;
 
   db.all(
     "SELECT * FROM orders ORDER BY rowid DESC LIMIT ? OFFSET ?",
@@ -163,6 +166,19 @@ app.post("/orders/checkout", (req, res) => {
       ? "DECLINED"
       : "ERROR";
 
+  // NEW: auth_token + auth_expires_at for successful authorizations
+  let authToken = null;
+  let authExpiresAt = null;
+
+  if (result === "SUCCESS") {
+    const randomPart = crypto.randomBytes(8).toString("hex");
+    authToken = `${orderId}_${randomPart}`;
+
+    const expiresDate = new Date();
+    expiresDate.setDate(expiresDate.getDate() + 7);
+    authExpiresAt = expiresDate.toISOString();
+  }
+
   db.run(
     "INSERT OR REPLACE INTO orders(order_id, customer_id, order_amount, status_id, order_date) VALUES (?, ?, ?, ?, datetime('now'))",
     [orderId, customerId, amount, status],
@@ -170,12 +186,12 @@ app.post("/orders/checkout", (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
 
       db.run(
-        "INSERT INTO authorizations(order_id, response_id, auth_amnt, last_4, audit_date) VALUES (?, ?, ?, ?, datetime('now'))",
-        [orderId, result, amount, last4 || "0000"],
+        "INSERT INTO authorizations(order_id, response_id, auth_amnt, last_4, auth_token, auth_expires_at, audit_date) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
+        [orderId, result, amount, last4 || "0000", authToken, authExpiresAt],
         (err2) => {
           if (err2) return res.status(500).json({ error: err2.message });
 
-          res.json({ orderId, result, status });
+          res.json({ orderId, result, status, authToken, authExpiresAt });
         }
       );
     }
@@ -201,7 +217,9 @@ app.post("/payments/settle", (req, res) => {
       if (!order) return res.status(404).json({ error: "Order not found" });
 
       if (order.status_id !== "AUTHORIZED") {
-        return res.status(400).json({ error: "Order not authorized, cannot settle" });
+        return res
+          .status(400)
+          .json({ error: "Order not authorized, cannot settle" });
       }
 
       db.get(
@@ -257,24 +275,36 @@ function finalizeSettlement(orderId, amount, authId, res) {
 app.get("/stats", (req, res) => {
   const out = { totals: {}, recentOrders: [], settled_total: 0 };
 
-  db.all("SELECT status_id, COUNT(*) AS count FROM orders GROUP BY status_id", [], (e1, rows1) => {
-    if (e1) return res.status(500).json({ error: e1.message });
+  db.all(
+    "SELECT status_id, COUNT(*) AS count FROM orders GROUP BY status_id",
+    [],
+    (e1, rows1) => {
+      if (e1) return res.status(500).json({ error: e1.message });
 
-    rows1.forEach((r) => (out.totals[r.status_id] = r.count));
+      rows1.forEach((r) => (out.totals[r.status_id] = r.count));
 
-    db.get("SELECT COUNT(*) AS total FROM orders", [], (e2, row2) => {
-      out.totals.ALL = row2?.total || 0;
+      db.get("SELECT COUNT(*) AS total FROM orders", [], (e2, row2) => {
+        out.totals.ALL = row2?.total || 0;
 
-      db.get("SELECT IFNULL(SUM(settled_amnt), 0) AS settled_total FROM settlements", [], (e3, row3) => {
-        out.settled_total = Number(row3?.settled_total || 0);
+        db.get(
+          "SELECT IFNULL(SUM(settled_amnt), 0) AS settled_total FROM settlements",
+          [],
+          (e3, row3) => {
+            out.settled_total = Number(row3?.settled_total || 0);
 
-        db.all("SELECT * FROM orders ORDER BY rowid DESC LIMIT 5", [], (e4, rows4) => {
-          out.recentOrders = rows4 || [];
-          res.json(out);
-        });
+            db.all(
+              "SELECT * FROM orders ORDER BY rowid DESC LIMIT 5",
+              [],
+              (e4, rows4) => {
+                out.recentOrders = rows4 || [];
+                res.json(out);
+              }
+            );
+          }
+        );
       });
-    });
-  });
+    }
+  );
 });
 
 // ============================================
