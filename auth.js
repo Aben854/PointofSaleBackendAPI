@@ -31,7 +31,7 @@ function createAuthRouter(db) {
       return;
     }
 
-    const verifyUrl = `${APP_BASE_URL}/auth/verify-email?token=${encodeURIComponent(
+    const verifyUrl = `${APP_BASE_URL}auth/verify-email?token=${encodeURIComponent(
       token
     )}`;
 
