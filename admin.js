@@ -46,23 +46,27 @@ async function submitSettlement() {
 // -------------------------------------------
 async function loadOrders() {
   const status = document.getElementById("filterStatus").value;
-  const customerId = document.getElementById("filterCustomerId").value;
+  const customerId = document.getElementById("filterCustomerId").value.trim();
 
-  let query = new URLSearchParams();
-  if (status) query.append("status", status);
-  if (customerId) query.append("customerId", customerId);
-
-  const url =
-    backendUrl() + "/orders" + (query.toString() ? "?" + query.toString() : "");
+  const endpoint = backendUrl() + "/orders";
 
   try {
-    const res = await fetch(url);
-    const data = await res.json();
+    const res = await fetch(endpoint);
+    let rows = await res.json();
 
-    renderOrderTable(data);
-  } catch {
+    // Front-end filtering
+    if (status) {
+      rows = rows.filter((r) => r.status === status);
+    }
+    if (customerId) {
+      rows = rows.filter((r) => String(r.customer_id) === customerId);
+    }
+
+    renderOrderTable(rows);
+  } catch (err) {
+    console.error("Error loading orders:", err);
     document.getElementById("orderTable").innerHTML =
-      "<p class='error'>Unable to load orders.</p>";
+      `<p class="error">Unable to load orders. Check backend URL.</p>`;
   }
 }
 
