@@ -1,9 +1,6 @@
 // ===============================
-// CAPSTONE BACKEND – UNIFIED SERVER.JS
-// Render-ready + Auth Register + Email Verification (SendGrid Web API)
+// CAPSTONE BACKEND – SERVER.JS
 // ===============================
-
-require("dotenv").config({ quiet: true });
 
 const express = require("express");
 const cors = require("cors");
@@ -14,35 +11,21 @@ const fs = require("fs");
 const path = require("path");
 const YAML = require("yamljs");
 const swaggerUi = require("swagger-ui-express");
-const sgMail = require("@sendgrid/mail");
-
-// Auth + email helpers
-const crypto = require("crypto");
-const bcrypt = require("bcryptjs");
+require("dotenv").config({ quiet: true });
 
 // Env + Logging
 const IS_TEST = process.env.NODE_ENV === "test";
-const log = (...args) => {
-  if (!IS_TEST) console.log(...args);
-};
-
-// ---------------- SendGrid Init ----------------
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  log("📧 SendGrid API key configured.");
-} else {
-  log("⚠️ SENDGRID_API_KEY not set; verification emails will not send.");
-}
+const log = (...args) => { if (!IS_TEST) console.log(...args); };
 
 const app = express();
 app.set("trust proxy", 1);
 
-// ---------------- Middleware ----------------
+// Middleware
 app.use(express.json());
 app.use(cors());
 app.use(
   helmet({
-    contentSecurityPolicy: false
+    contentSecurityPolicy: false // allow inline admin scripts
   })
 );
 app.disable("x-powered-by");
@@ -56,7 +39,7 @@ app.use(
   })
 );
 
-// ---------------- Database Setup ----------------
+// Database Setup
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, "ecommerce.db");
 const INIT_SQL = path.join(__dirname, "init-sqlite.sql");
 
@@ -74,11 +57,7 @@ if (!dbExists && fs.existsSync(INIT_SQL)) {
   });
 }
 
-// ---------------- Auth Router (AFTER app and db are created) ----------------
-const createAuthRouter = require("./auth");
-app.use("/auth", createAuthRouter(db));
-
-// ---------------- Swagger Docs ----------------
+// Swagger Docs
 const swaggerPath = path.join(__dirname, "openapi.yaml");
 if (fs.existsSync(swaggerPath)) {
   const docs = YAML.load(swaggerPath);
@@ -86,19 +65,15 @@ if (fs.existsSync(swaggerPath)) {
   log("📘 Swagger running at /docs");
 }
 
-// ---------------- Static Admin UI ----------------
-const publicDir = __dirname;
+// Static Admin UI
+const publicDir = path.join(__dirname, "public");
 app.use(express.static(publicDir));
-
 app.get("/admin", (req, res) =>
-  res.sendFile(path.join(__dirname, "admin.html"))
+  res.sendFile(path.join(publicDir, "admin.html"))
 );
 
-// ---------------- Health ----------------
-app.get("/", (req, res) =>
-  res.json({ ok: true, admin: "/admin", docs: "/docs" })
-);
-
+// Health
+app.get("/", (req, res) => res.json({ ok: true, admin: "/admin", docs: "/docs" }));
 app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.get("/db-health", (req, res) => {
@@ -108,225 +83,7 @@ app.get("/db-health", (req, res) => {
   });
 });
 
-// =====================================================
-//          AUTH: Register + Email Verification
-// =====================================================
-
-// Helper: send verification email to new users (SendGrid Web API)
-async function sendVerificationEmail(toEmail, token) {
-  if (!process.env.SENDGRID_API_KEY) {
-    log("⚠️ sendVerificationEmail called but SENDGRID_API_KEY is not configured.");
-    return;
-  }
-
-  const baseUrl =
-    process.env.APP_BASE_URL || "https://storefrontsolutions.shop";
-  const verifyUrl = `${baseUrl}/verify-email?token=${encodeURIComponent(
-    token
-  )}`;
-
-  const fromEmail =
-    process.env.FROM_EMAIL || "no-reply@storefrontsolutions.shop";
-
-  const msg = {
-    to: toEmail,
-    from: {
-      email: fromEmail,
-      name: "Storefront Solutions"
-    },
-    subject: "Verify your email",
-    html: `
-      <p>Thanks for creating an account with Storefront Solutions!</p>
-      <p>Click this link to verify your email address:</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p>If you didn't create this account, you can ignore this email.</p>
-    `
-  };
-
-  await sgMail.send(msg);
-}
-
-// POST /auth/register
-app.post("/auth/register", (req, res) => {
-  const {
-    email,
-    username,
-    password,
-    full_name,
-    address_line1,
-    address_line2,
-    city,
-    state,
-    zip_code
-  } = req.body || {};
-
-  // Basic validation
-  if (
-    !email ||
-    !username ||
-    !password ||
-    !full_name ||
-    !address_line1 ||
-    !zip_code
-  ) {
-    return res.status(400).json({
-      error:
-        "Missing required fields (email, username, password, full_name, address_line1, zip_code)"
-    });
-  }
-
-  if (password.length < 8) {
-    return res.status(400).json({
-      error: "Password must be at least 8 characters long."
-    });
-  }
-
-  // Check if email or username already exists
-  db.get(
-    "SELECT customer_id FROM customers WHERE email = ? OR username = ?",
-    [email, username],
-    (err, existing) => {
-      if (err) {
-        console.error("DB read error in /auth/register:", err);
-        return res.status(500).json({ error: "Database read error" });
-      }
-
-      if (existing) {
-        return res.status(409).json({
-          error: "Email or username already in use."
-        });
-      }
-
-      // Hash the password
-      const passwordHash = bcrypt.hashSync(password, 10);
-
-      // Generate verification token
-      const verifyToken = crypto.randomBytes(32).toString("hex");
-
-      // Insert into customers table
-      const sql = `
-        INSERT INTO customers (
-          full_name,
-          address_line1,
-          address_line2,
-          city,
-          state,
-          zip_code,
-          email,
-          username,
-          password_hash,
-          is_verified,
-          verify_token
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-      `;
-
-      db.run(
-        sql,
-        [
-          full_name,
-          address_line1,
-          address_line2 || null,
-          city || null,
-          state || null,
-          zip_code,
-          email,
-          username,
-          passwordHash,
-          verifyToken
-        ],
-        function (insertErr) {
-          if (insertErr) {
-            console.error("DB write error in /auth/register:", insertErr);
-            return res.status(500).json({ error: "Database write error" });
-          }
-
-          const customerId = this.lastID;
-
-          // Send verification email
-          sendVerificationEmail(email, verifyToken)
-            .then(() => {
-              res.status(201).json({
-                ok: true,
-                customerId,
-                email,
-                message:
-                  "Account created. Check your email to verify your address."
-              });
-            })
-            .catch((mailErr) => {
-              console.error("Email send error in /auth/register:", mailErr);
-
-              if (mailErr.response && mailErr.response.body) {
-                console.error(
-                  "SendGrid response body:",
-                  mailErr.response.body
-                );
-              }
-
-              res.status(201).json({
-                ok: true,
-                customerId,
-                email,
-                warning:
-                  "Account created, but verification email could not be sent."
-              });
-            });
-        }
-      );
-    }
-  );
-});
-
-// GET /verify-email – link clicked from email
-app.get("/verify-email", (req, res) => {
-  const token = req.query.token;
-
-  if (!token) {
-    return res.status(400).send("Missing verification token.");
-  }
-
-  db.get(
-    "SELECT customer_id, is_verified FROM customers WHERE verify_token = ?",
-    [token],
-    (err, customer) => {
-      if (err) {
-        console.error("DB read error in /verify-email:", err);
-        return res.status(500).send("Database read error.");
-      }
-
-      if (!customer) {
-        return res.status(400).send("Invalid or expired verification token.");
-      }
-
-      if (customer.is_verified) {
-        const baseUrl =
-          process.env.APP_BASE_URL || "https://storefrontsolutions.shop";
-        return res.redirect(`${baseUrl}/email-already-verified.html`);
-      }
-
-      db.run(
-        "UPDATE customers SET is_verified = 1, verify_token = NULL WHERE customer_id = ?",
-        [customer.customer_id],
-        (updateErr) => {
-          if (updateErr) {
-            console.error("DB write error in /verify-email:", updateErr);
-            return res.status(500).send("Database write error.");
-          }
-
-          const baseUrl =
-            process.env.APP_BASE_URL || "https://storefrontsolutions.shop";
-          return res.redirect(`${baseUrl}/email-verified.html`);
-        }
-      );
-    }
-  );
-});
-
-// =====================================================
-//        PAYMENT MOCK: Weighted Authorization
-// =====================================================
-
-// Weighted Authorization Outcome (4-way)
+// Weighted Authorization Outcome
 function pickAuthOutcomeWeighted() {
   const r = Math.random();
   if (r < 0.6) return "SUCCESS";
@@ -339,13 +96,13 @@ function pickAuthOutcomeWeighted() {
 // ORDERS
 // ============================================
 
-// List Orders
+// List Orders (no dependency on order_date)
 app.get("/orders", (req, res) => {
   const limit = parseInt(req.query.limit) || 200;
   const offset = parseInt(req.query.offset) || 0;
 
   db.all(
-    "SELECT * FROM orders ORDER BY order_date DESC LIMIT ? OFFSET ?",
+    "SELECT * FROM orders ORDER BY rowid DESC LIMIT ? OFFSET ?",
     [limit, offset],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -363,13 +120,13 @@ app.get("/orders/:id", (req, res) => {
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     db.get(
-      "SELECT * FROM authorizations WHERE order_id = ? ORDER BY audit_date DESC LIMIT 1",
+      "SELECT * FROM authorizations WHERE order_id = ? ORDER BY rowid DESC LIMIT 1",
       [id],
       (err2, auth) => {
         if (err2) return res.status(500).json({ error: err2.message });
 
         db.get(
-          "SELECT * FROM settlements WHERE order_id = ? ORDER BY settlement_date DESC LIMIT 1",
+          "SELECT * FROM settlements WHERE order_id = ? ORDER BY rowid DESC LIMIT 1",
           [id],
           (err3, settle) => {
             if (err3) return res.status(500).json({ error: err3.message });
@@ -444,25 +201,22 @@ app.post("/payments/settle", (req, res) => {
       if (!order) return res.status(404).json({ error: "Order not found" });
 
       if (order.status_id !== "AUTHORIZED") {
-        return res
-          .status(400)
-          .json({ error: "Order not authorized, cannot settle" });
+        return res.status(400).json({ error: "Order not authorized, cannot settle" });
       }
 
       db.get(
-        "SELECT auth_id FROM authorizations WHERE order_id = ? ORDER BY audit_date DESC LIMIT 1",
+        "SELECT auth_id FROM authorizations WHERE order_id = ? ORDER BY rowid DESC LIMIT 1",
         [orderId],
         (err2, auth) => {
           if (err2) return res.status(500).json({ error: err2.message });
 
           if (!auth) {
-            // Create default authorization if missing
+            // Auto-create authorization
             db.run(
               "INSERT INTO authorizations(order_id, response_id, auth_amnt, last_4, audit_date) VALUES (?, 'SUCCESS', ?, '0000', datetime('now'))",
               [orderId, order.order_amount],
               function (err3) {
                 if (err3) return res.status(500).json({ error: err3.message });
-
                 finalizeSettlement(orderId, amount, this.lastID, res);
               }
             );
@@ -484,16 +238,12 @@ function finalizeSettlement(orderId, amount, authId, res) {
       if (err) return res.status(500).json({ error: err.message });
 
       db.run(
-        "UPDATE orders SET status_id='SETTLED' WHERE order_id=?",
+        "UPDATE orders SET status_id = 'SETTLED' WHERE order_id = ?",
         [orderId],
         (err2) => {
           if (err2) return res.status(500).json({ error: err2.message });
 
-          res.json({
-            orderId,
-            paymentStatus: "SETTLED",
-            auth_id: authId
-          });
+          res.json({ orderId, paymentStatus: "SETTLED", auth_id: authId });
         }
       );
     }
@@ -501,46 +251,34 @@ function finalizeSettlement(orderId, amount, authId, res) {
 }
 
 // ============================================
-// STATS
+// STATS (ORDER BY rowid)
 // ============================================
 
 app.get("/stats", (req, res) => {
   const out = { totals: {}, recentOrders: [], settled_total: 0 };
 
-  db.all(
-    "SELECT status_id, COUNT(*) AS count FROM orders GROUP BY status_id",
-    [],
-    (e1, rows1) => {
-      if (e1) return res.status(500).json({ error: e1.message });
+  db.all("SELECT status_id, COUNT(*) AS count FROM orders GROUP BY status_id", [], (e1, rows1) => {
+    if (e1) return res.status(500).json({ error: e1.message });
 
-      rows1.forEach((r) => (out.totals[r.status_id] = r.count));
+    rows1.forEach((r) => (out.totals[r.status_id] = r.count));
 
-      db.get("SELECT COUNT(*) AS total FROM orders", [], (e2, row2) => {
-        out.totals.ALL = row2?.total || 0;
+    db.get("SELECT COUNT(*) AS total FROM orders", [], (e2, row2) => {
+      out.totals.ALL = row2?.total || 0;
 
-        db.get(
-          "SELECT IFNULL(SUM(settled_amnt), 0) AS settled_total FROM settlements",
-          [],
-          (e3, row3) => {
-            out.settled_total = Number(row3?.settled_total || 0);
+      db.get("SELECT IFNULL(SUM(settled_amnt), 0) AS settled_total FROM settlements", [], (e3, row3) => {
+        out.settled_total = Number(row3?.settled_total || 0);
 
-            db.all(
-              "SELECT order_id, customer_id, order_amount, status_id, order_date FROM orders ORDER BY order_date DESC LIMIT 5",
-              [],
-              (e4, rows4) => {
-                out.recentOrders = rows4 || [];
-                res.json(out);
-              }
-            );
-          }
-        );
+        db.all("SELECT * FROM orders ORDER BY rowid DESC LIMIT 5", [], (e4, rows4) => {
+          out.recentOrders = rows4 || [];
+          res.json(out);
+        });
       });
-    }
-  );
+    });
+  });
 });
 
 // ============================================
-// SEED ORDERS (Optional)
+// SEED ORDERS
 // ============================================
 
 app.post("/seed-orders", (req, res) => {
@@ -567,10 +305,7 @@ app.post("/seed-orders", (req, res) => {
   res.json({ message: "10 sample orders added." });
 });
 
-// ============================================
 // Start Server
-// ============================================
-
 if (!IS_TEST) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => log(`✅ API running on port ${PORT}`));

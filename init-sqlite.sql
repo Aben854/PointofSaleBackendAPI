@@ -50,15 +50,19 @@ CREATE TABLE IF NOT EXISTS orders (
 -- Authorizations
 -- =====================
 CREATE TABLE IF NOT EXISTS authorizations (
-  auth_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  order_id       TEXT NOT NULL,
-  outcome        TEXT NOT NULL CHECK (outcome IN ('SUCCESS','DECLINED','ERROR')),
-  gateway_code   TEXT,
+  auth_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id        TEXT NOT NULL,
+  outcome         TEXT NOT NULL CHECK (outcome IN ('SUCCESS','DECLINED','ERROR')),
+  gateway_code    TEXT,
   gateway_message TEXT,
-  amount         REAL NOT NULL,
-  created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+  amount          REAL NOT NULL,
+  auth_token      TEXT,
+  auth_expires_at DATETIME,
+
+  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
 );
+
 
 -- =====================
 -- Settlements
@@ -128,7 +132,7 @@ VALUES
   ('ORDER_SETTLED',    'ORD1004', 'Settlement completed');
 
 -- =====================
--- Users / Cards (currently optional for your project)
+-- Users / Cards 
 -- =====================
 CREATE TABLE IF NOT EXISTS users (
   user_id         INTEGER PRIMARY KEY AUTOINCREMENT,
