@@ -86,14 +86,14 @@ function renderOrderTable(rows) {
       </tr>
   `;
 
-  rows.forEach((o) => {
+  rows.forEach((row) => {
     html += `
       <tr>
-        <td>${o.order_id}</td>
-        <td>${o.customer_id}</td>
-        <td>$${o.order_amount}</td>
-        <td>${o.status_id}</td>
-        <td>${o.order_date}</td>
+        <td>${row.order_id}</td>
+        <td>${row.customer_id}</td>
+        <td>$${Number(row.total_amount).toFixed(2)}</td>
+        <td>${row.status}</td>
+        <td>${row.created_at}</td>
       </tr>
     `;
   });
