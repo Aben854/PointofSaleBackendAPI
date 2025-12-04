@@ -1,9 +1,15 @@
-// BASE URL pulled from input
+// ===============================
+//  ADMIN.JS – WORKING VERSION
+// ===============================
+
+// Return trimmed backend URL
 function backendUrl() {
   return document.getElementById("baseUrl").value.replace(/\/+$/, "");
 }
 
-// ---------------------- SETTLEMENT ----------------------
+// -------------------------------------------
+// SUBMIT SETTLEMENT
+// -------------------------------------------
 async function submitSettlement() {
   const orderId = document.getElementById("settleOrderId").value.trim();
   const amount = Number(document.getElementById("settleAmount").value);
@@ -12,7 +18,7 @@ async function submitSettlement() {
   msgBox.innerHTML = "";
 
   if (!orderId || !amount) {
-    msgBox.innerHTML = `<div class="error">Missing Order ID or Amount.</div>`;
+    msgBox.innerHTML = `<div class="error">Please enter Order ID and Amount.</div>`;
     return;
   }
 
@@ -26,87 +32,75 @@ async function submitSettlement() {
     const data = await res.json();
 
     if (!res.ok) {
-      msgBox.innerHTML = `<div class="error">${data.error || "Settlement failed."}</div>`;
+      msgBox.innerHTML = `<div class="error">${data.error}</div>`;
     } else {
-      msgBox.innerHTML = `<div class="success">Order ${orderId} settled successfully!</div>`;
-      loadOrders(); // refresh list
+      msgBox.innerHTML = `<div class="success">Order ${orderId} settled successfully.</div>`;
     }
   } catch (err) {
-    console.error("Error in submitSettlement:", err);
     msgBox.innerHTML = `<div class="error">Error: ${err.message}</div>`;
   }
 }
 
-// ---------------------- LOAD ORDERS + FILTERS ----------------------
+// -------------------------------------------
+// LOAD ORDERS
+// -------------------------------------------
 async function loadOrders() {
   const status = document.getElementById("filterStatus").value;
-  const customerId = document.getElementById("filterCustomerId").value.trim();
+  const customerId = document.getElementById("filterCustomerId").value;
 
-  const endpoint = backendUrl() + "/orders";
+  let query = new URLSearchParams();
+  if (status) query.append("status", status);
+  if (customerId) query.append("customerId", customerId);
+
+  const url =
+    backendUrl() + "/orders" + (query.toString() ? "?" + query.toString() : "");
 
   try {
-    const res = await fetch(endpoint);
-    let rows = await res.json();
+    const res = await fetch(url);
+    const data = await res.json();
 
-    // Front-end filtering 
-    if (status) {
-      rows = rows.filter((r) => r.status === status);
-    }
-    if (customerId) {
-      rows = rows.filter((r) => String(r.customer_id) === customerId);
-    }
-
-    renderOrderTable(rows);
-  } catch (err) {
-    console.error("Error loading orders:", err);
+    renderOrderTable(data);
+  } catch {
     document.getElementById("orderTable").innerHTML =
-      `<p class="error">Unable to load orders. Check backend URL.</p>`;
+      "<p class='error'>Unable to load orders.</p>";
   }
 }
 
-// ---------------------- TABLE RENDER ----------------------
+// -------------------------------------------
+// RENDER TABLE
+// -------------------------------------------
 function renderOrderTable(rows) {
-  const container = document.getElementById("orderTable");
-
-  if (!Array.isArray(rows) || rows.length === 0) {
-    container.innerHTML = "<p>No orders found.</p>";
+  if (!rows || rows.length === 0) {
+    document.getElementById("orderTable").innerHTML = "<p>No orders found.</p>";
     return;
   }
 
   let html = `
-    <table class="orders-table">
-      <thead>
-        <tr>
-          <th>Order ID</th>
-          <th>Customer ID</th>
-          <th>Amount</th>
-          <th>Status</th>
-          <th>Created At</th>
-        </tr>
-      </thead>
-      <tbody>
+    <table>
+      <tr>
+        <th>Order ID</th>
+        <th>Customer ID</th>
+        <th>Amount</th>
+        <th>Status</th>
+        <th>Date</th>
+      </tr>
   `;
 
-  rows.forEach((row) => {
+  rows.forEach((o) => {
     html += `
       <tr>
-        <td>${row.order_id}</td>
-        <td>${row.customer_id}</td>
-        <td>$${Number(row.total_amount).toFixed(2)}</td>
-        <td>${row.status}</td>
-        <td>${row.created_at}</td>
+        <td>${o.order_id}</td>
+        <td>${o.customer_id}</td>
+        <td>$${o.order_amount}</td>
+        <td>${o.status_id}</td>
+        <td>${o.order_date}</td>
       </tr>
     `;
   });
 
-  html += `
-      </tbody>
-    </table>
-  `;
-
-  container.innerHTML = html;
+  html += `</table>`;
+  document.getElementById("orderTable").innerHTML = html;
 }
-
 // ---------------------- WIRE UP EVENTS ----------------------
 document.addEventListener("DOMContentLoaded", () => {
   const settleBtn = document.getElementById("settleBtn");
