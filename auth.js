@@ -384,10 +384,7 @@ function createAuthRouter(db) {
               return res.status(500).json({ error: "Database write error" });
             }
 
-            return res.json({
-              ok: true,
-              message: "Email verified successfully. You can now log in."
-            });
+            return res.redirect("https://storefrontsolutions.shop/verified.html");
           }
         );
       }
