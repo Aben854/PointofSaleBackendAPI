@@ -57,6 +57,13 @@ if (!dbExists && fs.existsSync(INIT_SQL)) {
   });
 }
 
+const dbPath = path.join(__dirname, "ecommerce.db");
+if (fs.existsSync(dbPath)) {
+  fs.unlinkSync(dbPath);
+  console.log("🗑️ Old ecommerce.db deleted, will recreate on startup.");
+}
+
+
 // Swagger Docs
 const swaggerPath = path.join(__dirname, "openapi.yaml");
 if (fs.existsSync(swaggerPath)) {
