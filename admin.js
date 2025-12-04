@@ -1,15 +1,9 @@
-// ===============================
-//  ADMIN.JS – WORKING VERSION
-// ===============================
-
-// Return trimmed backend URL
+// BASE URL pulled from input
 function backendUrl() {
   return document.getElementById("baseUrl").value.replace(/\/+$/, "");
 }
 
-// -------------------------------------------
-// SUBMIT SETTLEMENT
-// -------------------------------------------
+// ---------------------- SETTLEMENT ----------------------
 async function submitSettlement() {
   const orderId = document.getElementById("settleOrderId").value.trim();
   const amount = Number(document.getElementById("settleAmount").value);
@@ -18,7 +12,7 @@ async function submitSettlement() {
   msgBox.innerHTML = "";
 
   if (!orderId || !amount) {
-    msgBox.innerHTML = `<div class="error">Please enter Order ID and Amount.</div>`;
+    msgBox.innerHTML = `<div class="error">Missing Order ID or Amount.</div>`;
     return;
   }
 
@@ -32,18 +26,18 @@ async function submitSettlement() {
     const data = await res.json();
 
     if (!res.ok) {
-      msgBox.innerHTML = `<div class="error">${data.error}</div>`;
+      msgBox.innerHTML = `<div class="error">${data.error || "Settlement failed."}</div>`;
     } else {
-      msgBox.innerHTML = `<div class="success">Order ${orderId} settled successfully.</div>`;
+      msgBox.innerHTML = `<div class="success">Order ${orderId} settled successfully!</div>`;
+      loadOrders(); // refresh list
     }
   } catch (err) {
+    console.error("Error in submitSettlement:", err);
     msgBox.innerHTML = `<div class="error">Error: ${err.message}</div>`;
   }
 }
 
-// -------------------------------------------
-// LOAD ORDERS
-// -------------------------------------------
+// ---------------------- LOAD ORDERS + FILTERS ----------------------
 async function loadOrders() {
   const status = document.getElementById("filterStatus").value;
   const customerId = document.getElementById("filterCustomerId").value.trim();
@@ -54,7 +48,7 @@ async function loadOrders() {
     const res = await fetch(endpoint);
     let rows = await res.json();
 
-    // Front-end filtering
+    // Front-end filtering 
     if (status) {
       rows = rows.filter((r) => r.status === status);
     }
@@ -70,24 +64,27 @@ async function loadOrders() {
   }
 }
 
-// -------------------------------------------
-// RENDER TABLE
-// -------------------------------------------
+// ---------------------- TABLE RENDER ----------------------
 function renderOrderTable(rows) {
+  const container = document.getElementById("orderTable");
+
   if (!Array.isArray(rows) || rows.length === 0) {
-    document.getElementById("orderTable").innerHTML = "<p>No orders found.</p>";
+    container.innerHTML = "<p>No orders found.</p>";
     return;
   }
 
   let html = `
-    <table>
-      <tr>
-        <th>Order ID</th>
-        <th>Customer</th>
-        <th>Amount</th>
-        <th>Status</th>
-        <th>Date</th>
-      </tr>
+    <table class="orders-table">
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Customer ID</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Created At</th>
+        </tr>
+      </thead>
+      <tbody>
   `;
 
   rows.forEach((row) => {
@@ -102,9 +99,27 @@ function renderOrderTable(rows) {
     `;
   });
 
-  html += "</table>";
-  document.getElementById("orderTable").innerHTML = html;
+  html += `
+      </tbody>
+    </table>
+  `;
+
+  container.innerHTML = html;
 }
 
-// Auto-load orders on page load
-loadOrders();
+// ---------------------- WIRE UP EVENTS ----------------------
+document.addEventListener("DOMContentLoaded", () => {
+  const settleBtn = document.getElementById("settleBtn");
+  const filterBtn = document.getElementById("filterBtn");
+
+  if (settleBtn) {
+    settleBtn.addEventListener("click", submitSettlement);
+  }
+
+  if (filterBtn) {
+    filterBtn.addEventListener("click", loadOrders);
+  }
+
+  // Initial load of orders
+  loadOrders();
+});
