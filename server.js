@@ -300,13 +300,11 @@ app.get("/orders/:id", (req, res) => {
 // ============================================
 // CHECKOUT / AUTHORIZATION
 // ============================================
-//
-// Expects JSON body from frontend card page:
-// { orderId, customerId, amount, last4 }
-//
-app.post("/orders/checkout", (req, res) => {
-  const { orderId, customerId, amount, last4 } = req.body;
 
+app.post("/orders/checkout", (req, res) => {
+  const { orderId, customerId, amount, last4 } = req.body || {};
+
+  // basic validation
   if (!orderId || !customerId || amount == null) {
     return res.status(400).json({ error: "Missing fields" });
   }
@@ -316,87 +314,110 @@ app.post("/orders/checkout", (req, res) => {
     return res.status(400).json({ error: "Invalid amount" });
   }
 
-  const outcome = pickAuthOutcomeWeighted();
+  // This is the detailed result that your front-end cares about.
+  // It returns one of:
+  // "SUCCESS", "INSUFFICIENT_FUNDS", "INCORRECT_DETAILS", "SERVER_ERROR"
+  const detailedResult = pickAuthOutcomeWeighted();
 
-  const status =
-    outcome === "SUCCESS"
+  // Map detailed result to ORDER status
+  // (what gets stored in orders.status)
+  const orderStatus =
+    detailedResult === "SUCCESS"
       ? "AUTHORIZED"
-      : outcome === "INSUFFICIENT_FUNDS" || outcome === "INCORRECT_DETAILS"
+      : detailedResult === "INSUFFICIENT_FUNDS" ||
+        detailedResult === "INCORRECT_DETAILS"
       ? "DECLINED"
       : "ERROR";
 
-  let authToken = null;
-  let authExpiresAt = null;
+  // Map to the limited set allowed by the CHECK constraint on
+  // authorizations.outcome: 'SUCCESS', 'DECLINED', 'ERROR'
+  const authOutcome =
+    orderStatus === "AUTHORIZED"
+      ? "SUCCESS"
+      : orderStatus === "DECLINED"
+      ? "DECLINED"
+      : "ERROR";
 
-  if (outcome === "SUCCESS") {
-    const generated = generateAuthToken(orderId);
-    authToken = generated.token;
-    authExpiresAt = generated.expiresAt;
+  // Use gateway_code / gateway_message to store the specific reason
+  let gatewayCode = "00";
+  let gatewayMessage = "Approved";
+
+  switch (detailedResult) {
+    case "SUCCESS":
+      gatewayCode = "00";
+      gatewayMessage = "Approved";
+      break;
+    case "INSUFFICIENT_FUNDS":
+      gatewayCode = "51";
+      gatewayMessage = "Insufficient funds";
+      break;
+    case "INCORRECT_DETAILS":
+      gatewayCode = "14";
+      gatewayMessage = "Incorrect card details";
+      break;
+    case "SERVER_ERROR":
+    default:
+      gatewayCode = "XX";
+      gatewayMessage = "Authorization server error";
+      break;
   }
 
-  // Upsert order row
+  // Upsert into orders (matches init-sqlite.sql: status, total_amount)
   db.run(
     `
-    INSERT INTO orders (order_id, customer_id, status, total_amount)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(order_id) DO UPDATE SET
-      customer_id = excluded.customer_id,
-      status = excluded.status,
-      total_amount = excluded.total_amount,
-      updated_at = CURRENT_TIMESTAMP
-  `,
-    [orderId, customerId, status, numericAmount],
-    (err) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
+      INSERT INTO orders (order_id, customer_id, status, total_amount)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(order_id) DO UPDATE SET
+        customer_id  = excluded.customer_id,
+        status       = excluded.status,
+        total_amount = excluded.total_amount,
+        updated_at   = CURRENT_TIMESTAMP
+    `,
+    [orderId, customerId, orderStatus, numericAmount],
+    (orderErr) => {
+      if (orderErr) {
+        console.error("DB write error in /orders/checkout (orders):", orderErr);
+        return res.status(500).json({ error: "Database write error (orders)" });
       }
 
-      // Insert authorization row
+      // Insert into authorizations (matches init-sqlite.sql)
       db.run(
         `
-        INSERT INTO authorizations (
-          order_id,
-          outcome,
-          gateway_code,
-          gateway_message,
-          amount,
-          auth_token,
-          auth_expires_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-        [
-          orderId,
-          outcome,
-          outcome === "SUCCESS" ? "00" : "XX",
-          outcome === "SUCCESS"
-            ? "Approved"
-            : outcome === "INSUFFICIENT_FUNDS"
-            ? "Insufficient funds"
-            : outcome === "INCORRECT_DETAILS"
-            ? "Incorrect card details"
-            : "Server error",
-          numericAmount,
-          authToken,
-          authExpiresAt
-        ],
-        (err2) => {
-          if (err2) {
-            return res.status(500).json({ error: err2.message });
+          INSERT INTO authorizations (
+            order_id,
+            outcome,
+            gateway_code,
+            gateway_message,
+            amount
+          )
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        [orderId, authOutcome, gatewayCode, gatewayMessage, numericAmount],
+        (authErr) => {
+          if (authErr) {
+            console.error(
+              "DB write error in /orders/checkout (authorizations):",
+              authErr
+            );
+            return res
+              .status(500)
+              .json({ error: "Database write error (authorizations)" });
           }
 
-          res.json({
+          // Send detailed result back to the frontend so it can show
+          // SUCCESS / INSUFFICIENT_FUNDS / INCORRECT_DETAILS / SERVER_ERROR
+          return res.json({
             orderId,
-            result: outcome,
-            status,
-            authToken,
-            authExpiresAt
+            result: detailedResult, // what paymentauthorization.html uses
+            status: orderStatus,    // AUTHORIZED / DECLINED / ERROR
+            outcome: authOutcome    // SUCCESS / DECLINED / ERROR (DB-safe)
           });
         }
       );
     }
   );
 });
+
 
 // ============================================
 // PAYMENT SETTLEMENT
