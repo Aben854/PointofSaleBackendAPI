@@ -70,7 +70,7 @@ async function loadOrders() {
 // RENDER TABLE
 // -------------------------------------------
 function renderOrderTable(rows) {
-  if (!rows || rows.length === 0) {
+  if (!Array.isArray(rows) || rows.length === 0) {
     document.getElementById("orderTable").innerHTML = "<p>No orders found.</p>";
     return;
   }
@@ -79,26 +79,26 @@ function renderOrderTable(rows) {
     <table>
       <tr>
         <th>Order ID</th>
-        <th>Customer ID</th>
+        <th>Customer</th>
         <th>Amount</th>
         <th>Status</th>
         <th>Date</th>
       </tr>
   `;
 
-  rows.forEach((o) => {
+  rows.forEach((row) => {
     html += `
       <tr>
-        <td>${o.order_id}</td>
-        <td>${o.customer_id}</td>
-        <td>$${o.order_amount}</td>
-        <td>${o.status_id}</td>
-        <td>${o.order_date}</td>
+        <td>${row.order_id}</td>
+        <td>${row.customer_id}</td>
+        <td>$${Number(row.total_amount).toFixed(2)}</td>
+        <td>${row.status}</td>
+        <td>${row.created_at}</td>
       </tr>
     `;
   });
 
-  html += `</table>`;
+  html += "</table>";
   document.getElementById("orderTable").innerHTML = html;
 }
 
