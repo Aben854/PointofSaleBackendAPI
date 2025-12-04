@@ -66,7 +66,7 @@ if (fs.existsSync(swaggerPath)) {
 }
 
 // Static Admin UI
-const publicDir = path.join(__dirname, "public");
+const publicDir = __dirname;;
 app.use(express.static(publicDir));
 app.get("/admin", (req, res) =>
   res.sendFile(path.join(publicDir, "admin.html"))
