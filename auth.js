@@ -93,7 +93,7 @@ function createAuthRouter(db) {
     const passwordHash = bcrypt.hashSync(password, 10);
     const verifyToken = crypto.randomBytes(32).toString("hex");
 
-    // (Optional) Check for duplicate email/username first
+    // Check for duplicate email/username first
     db.get(
       `
       SELECT customer_id
@@ -247,6 +247,102 @@ function createAuthRouter(db) {
     );
   });
 
+    // ==================================
+  //    POST /auth/update
+  //    Update account details by email
+  // ==================================
+  router.post("/update", (req, res) => {
+    const {
+      email,
+      full_name,
+      address_line1,
+      address_line2,
+      city,
+      state,
+      zip_code,
+      password
+    } = req.body || {};
+
+    // Email to know which account to update
+    if (!email) {
+      return res
+        .status(400)
+        .json({ error: "Email is required to update account details." });
+    }
+
+    const updates = [];
+    const params = [];
+
+    if (full_name) {
+      updates.push("full_name = ?");
+      params.push(full_name);
+    }
+    if (address_line1) {
+      updates.push("address_line1 = ?");
+      params.push(address_line1);
+    }
+    if (address_line2 !== undefined) {
+      updates.push("address_line2 = ?");
+      params.push(address_line2 || null);
+    }
+    if (city !== undefined) {
+      updates.push("city = ?");
+      params.push(city || null);
+    }
+    if (state !== undefined) {
+      updates.push("state = ?");
+      params.push(state || null);
+    }
+    if (zip_code) {
+      updates.push("zip_code = ?");
+      params.push(zip_code);
+    }
+
+    // Optional password change
+    if (password) {
+      if (password.length < 8) {
+        return res.status(400).json({
+          error: "Password must be at least 8 characters long."
+        });
+      }
+      const passwordHash = bcrypt.hashSync(password, 10);
+      updates.push("password_hash = ?");
+      params.push(passwordHash);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update." });
+    }
+
+    // Match email case-insensitively
+    params.push(email.toLowerCase());
+
+    const sql = `
+      UPDATE customers
+      SET ${updates.join(", ")}
+      WHERE LOWER(email) = ?
+    `;
+
+    db.run(sql, params, function (err) {
+      if (err) {
+        console.error("DB write error in /auth/update:", err);
+        return res.status(500).json({ error: "Database write error" });
+      }
+
+      if (this.changes === 0) {
+        return res
+          .status(404)
+          .json({ error: "No account found with that email." });
+      }
+
+      return res.json({
+        ok: true,
+        message: "Account details updated successfully."
+      });
+    });
+  });
+
+
   // ==================================
   //    GET /auth/verify-email?token=
   // ==================================
@@ -288,7 +384,6 @@ function createAuthRouter(db) {
               return res.status(500).json({ error: "Database write error" });
             }
 
-            // For now, simple JSON response is fine
             return res.json({
               ok: true,
               message: "Email verified successfully. You can now log in."
